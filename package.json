@@ -1,0 +1,12 @@
+{
+  "name": "smart-college-result-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smart College Result & AI Report Card Portal - Full-Stack Application",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "start": "node backend/src/server.js",
+    "init:db": "node backend/src/db/init.js",
+    "build": "npm --prefix frontend run build"
+  }
+}

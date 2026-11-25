@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  HOD
+  PROFESSOR
+  STUDENT
+}
+
+enum SubjectStatus {
+  PENDING_PROFESSOR
+  IN_PROGRESS
+  LOCKED
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  role         Role
+  identifier   String
+  name         String
+  department   String   @default("")
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  hodClasses          CollegeClass[]      @relation("HodClasses")
+  assignedSubjects    Subject[]           @relation("AssignedProfessor")
+  subjectPermissions  SubjectPermission[] @relation("ProfessorPermissions")
+  enrollments         Enrollment[]        @relation("StudentEnrollments")
+  enteredMarks        Mark[]              @relation("EnteredMarks")
+  studentMarks        Mark[]              @relation("StudentMarks")
+  notifications       Notification[]      @relation("UserNotifications")
+
+  @@unique([role, identifier])
+  @@index([identifier])
+}
+
+model CollegeClass {
+  id                  String    @id @default(uuid())
+  hodId               String
+  className           String
+  courseProgram       String
+  semesterYear        String
+  examMonthYear       String
+  inviteCode          String    @unique
+  passingPercentage   Float     @default(40.0)
+  gradeBoundariesJson String    @db.Text
+  preparedBy          String    @default("")
+  checkedBy           String    @default("")
+  dateOfIssue         String    @default("")
+  controllerTitle     String    @default("Controller of Examinations")
+  whitelistJson       String    @db.LongText
+  isDeployed          Boolean   @default(false)
+  deployedAt          DateTime?
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  hod                User                @relation("HodClasses", fields: [hodId], references: [id], onDelete: Cascade)
+  subjects           Subject[]
+  subjectPermissions SubjectPermission[]
+  enrollments        Enrollment[]
+  marks              Mark[]
+  auditLogs          AuditLog[]
+
+  @@index([hodId])
+}
+
+model Subject {
+  id                  String        @id @default(uuid())
+  classId             String
+  code                String
+  name                String
+  maxMarks            Int           @default(100)
+  status              SubjectStatus @default(PENDING_PROFESSOR)
+  assignedProfessorId String?
+  lockedAt            DateTime?
+  version             Int           @default(1)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  collegeClass       CollegeClass        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  assignedProfessor  User?               @relation("AssignedProfessor", fields: [assignedProfessorId], references: [id], onDelete: SetNull)
+  permissions        SubjectPermission[]
+  marks              Mark[]
+  auditLogs          AuditLog[]
+
+  @@unique([classId, code])
+  @@index([assignedProfessorId])
+}
+
+model SubjectPermission {
+  id           String        @id @default(uuid())
+  classId      String
+  subjectId    String
+  professorId  String
+  status       RequestStatus @default(PENDING)
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  collegeClass CollegeClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  professor    User         @relation("ProfessorPermissions", fields: [professorId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, professorId])
+  @@index([classId, status])
+}
+
+model Enrollment {
+  id               String        @id @default(uuid())
+  classId          String
+  studentId        String
+  enrollmentNo     String
+  status           RequestStatus @default(PENDING)
+  whitelistMatched Boolean       @default(false)
+  reviewedById     String?
+  reviewedAt       DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  collegeClass CollegeClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student      User         @relation("StudentEnrollments", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, studentId])
+  @@index([classId, status])
+  @@index([enrollmentNo])
+}
+
+model Mark {
+  id            String   @id @default(uuid())
+  classId       String
+  subjectId     String
+  studentId     String
+  marksObtained Float
+  aiRemark      String   @default("") @db.Text
+  enteredById   String
+  version       Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  collegeClass CollegeClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  student      User         @relation("StudentMarks", fields: [studentId], references: [id], onDelete: Cascade)
+  enteredBy    User         @relation("EnteredMarks", fields: [enteredById], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, studentId])
+  @@index([classId, studentId])
+}
+
+model AuditLog {
+  id                  String   @id @default(uuid())
+  classId             String
+  subjectId           String
+  studentId           String
+  professorId         String
+  professorName       String
+  subjectCode         String
+  subjectName         String
+  studentEnrollmentNo String
+  studentName         String
+  oldMarks            Float?
+  newMarks            Float
+  action              String
+  createdAt           DateTime @default(now())
+
+  collegeClass CollegeClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@index([classId, createdAt])
+}
+
+model Notification {
+  id             String   @id @default(uuid())
+  userId         String
+  role           Role
+  type           String
+  title          String
+  message        String   @db.Text
+  relatedClassId String?
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  user User @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
